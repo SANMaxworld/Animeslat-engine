@@ -1,0 +1,14 @@
+{
+  "name": "chromium-fetch-system",
+  "version": "1.0.0",
+  "description": "Modular Chromium-Based External Fetch & Web Compatibility System",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "playwright": "^1.49.0"
+  }
+}

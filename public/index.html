@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AnimeSalt HLS Dashboard & Playback Lab</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Local Hls.js Library (Official, Offline-ready) -->
+    <script src="hls.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- 1. Top Navbar / Browser Status Header -->
+        <header class="navbar">
+            <div class="brand">
+                <span class="logo-icon">⚡</span>
+                <div class="brand-text">
+                    <h1>AnimeSalt HLS Dashboard</h1>
+                    <span class="sub-title">HLS Playback Lab & Audio/Video Diagnostics Suite</span>
+                </div>
+            </div>
+            <div class="header-status">
+                <div class="status-badge" id="browserStatusBadge">
+                    <span class="dot" id="statusDot"></span>
+                    <span id="statusText">CONNECTING...</span>
+                </div>
+                <div class="session-badge">
+                    <span id="cookieCount">0</span> Cookies Persisted
+                </div>
+                <button class="btn btn-secondary btn-sm" id="clearSessionBtn" title="Reset stored cookies">
+                    🗑️ Reset Session
+                </button>
+                <button class="btn btn-danger btn-sm" id="topResetDashboardBtn" title="Full System Reset & Ready for New Link">
+                    🔄 Reset Lab
+                </button>
+            </div>
+        </header>
+
+        <!-- Challenge Alert Banner (For Cloudflare / Turnstile HITL) -->
+        <div class="challenge-banner" id="challengeBanner" style="display: none;">
+            <div class="banner-icon">🛡️</div>
+            <div class="banner-content">
+                <strong>Browser Verification Required!</strong>
+                <p id="challengeMessage">A security verification screen was encountered. Please complete verification in the visible Chromium window.</p>
+            </div>
+            <div class="banner-pulse">Waiting for resolution...</div>
+        </div>
+
+        <!-- Target Fetch Bar -->
+        <section class="control-panel card">
+            <form id="fetchForm" class="fetch-form">
+                <div class="input-group">
+                    <span class="input-prefix">FETCH /</span>
+                    <input type="url" id="targetUrl" placeholder="https://animesalt.cx/episode/..." required value="https://animesalt.cx/episode/solo-leveling-1x1/">
+                    <button type="submit" class="btn btn-primary" id="fetchBtn">
+                        <span id="fetchBtnIcon">🚀</span> Intercept Stream
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="resetDashboardBtn" title="Reset player, clear memory and test a new link">
+                        <span>🔄</span> Reset / New Test
+                    </button>
+                </div>
+                <div class="form-options">
+                    <label class="toggle-option">
+                        <input type="checkbox" id="headedCheck" checked>
+                        <span>Headed Browser (Visible Window)</span>
+                    </label>
+                    <label class="toggle-option">
+                        <input type="checkbox" id="autoMediaCheck" checked>
+                        <span>Auto-Trigger Playback (Capture HLS Requests)</span>
+                    </label>
+                    <div class="active-url-display">
+                        <span class="lbl">Active URL:</span>
+                        <span class="val" id="activeUrlDisplay">about:blank</span>
+                    </div>
+                </div>
+            </form>
+        </section>
+
+        <!-- 2. Captured Resources Spotlight Card -->
+        <section class="media-spotlight card" id="mediaSpotlightCard">
+            <div class="card-header">
+                <div class="flex items-center gap-2">
+                    <h3>🎬 Captured Video & Audio Resources</h3>
+                    <span class="badge badge-success" id="mediaStreamCount">0 Found</span>
+                </div>
+                <div class="header-actions">
+                    <span class="text-hint">Select any stream to test in the Playback Lab below</span>
+                </div>
+            </div>
+            <div class="media-list" id="mediaList">
+                <div class="empty-state">No streaming media captured yet. Run a fetch operation above.</div>
+            </div>
+        </section>
+
+        <!-- 3 & 4. HLS PLAYBACK LAB (Core Section) -->
+        <section class="playback-lab card" id="playbackLabSection">
+            <div class="card-header lab-header">
+                <div class="lab-title">
+                    <span class="lab-icon">🔬</span>
+                    <div>
+                        <h2>HLS PLAYBACK LAB</h2>
+                        <span class="sub-title">Test Authorized HLS Streams, Validate Master Manifests & Measure Audio/Video Sync</span>
+                    </div>
+                </div>
+                <div class="lab-actions">
+                    <label class="proxy-toggle">
+                        <input type="checkbox" id="useProxyToggle" checked>
+                        <span>Use HLS Proxy (Bypasses CORS & Injects Provider Referer)</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Lab Input & Test Bar -->
+            <div class="lab-input-bar">
+                <input type="text" id="labStreamUrl" placeholder="Paste or select an authorized .m3u8 playlist URL to test..." class="lab-url-input">
+                <button class="btn btn-success" id="loadLabStreamBtn">
+                    ▶ Load & Play Stream
+                </button>
+                <button class="btn btn-secondary" id="analyzeManifestBtn">
+                    🔍 Analyze Manifest
+                </button>
+            </div>
+
+            <!-- Video Player & Playback Diagnostics Grid -->
+            <div class="lab-grid">
+                <!-- Video Player Column -->
+                <div class="player-container">
+                    <div class="video-wrapper">
+                        <video id="labVideo" playsinline preload="auto" controls></video>
+                        <audio id="labAudio" preload="auto" style="display: none;"></audio>
+                        <div class="player-overlay" id="playerOverlay">
+                            <div class="spinner" id="playerSpinner" style="display: none;"></div>
+                            <div class="overlay-msg" id="overlayMsg">Ready to load stream</div>
+                        </div>
+                    </div>
+
+                    <!-- 5, 6, 7. Quality, Audio & Subtitle Track Selectors -->
+                    <div class="selectors-bar">
+                        <div class="selector-group">
+                            <label for="qualitySelect">🎞️ Video Quality:</label>
+                            <select id="qualitySelect" disabled>
+                                <option value="-1">Auto (ABR)</option>
+                            </select>
+                        </div>
+                        <div class="selector-group">
+                            <label for="audioSelect">🔊 Audio Track:</label>
+                            <select id="audioSelect" disabled>
+                                <option value="-1">Default (Auto)</option>
+                            </select>
+                        </div>
+                        <div class="selector-group">
+                            <label for="subtitleSelect">💬 Subtitles:</label>
+                            <select id="subtitleSelect" disabled>
+                                <option value="-1">Disabled</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Single-Select Quality & Audio Language Control Suite -->
+                    <div class="selector-box-container">
+                        <!-- Quality Selector Card -->
+                        <div class="selector-box-card">
+                            <div class="selector-box-header">
+                                <span class="selector-box-title">🎞️ Video Quality (Choose 1)</span>
+                                <span class="proto-badge badge-blue" id="protoQualityBadge">Auto (ABR Mode)</span>
+                            </div>
+                            <div class="selector-list" id="protoQualityList">
+                                <span class="proto-hint">Available qualities will appear when stream loads...</span>
+                            </div>
+                            <div class="proto-link-row" id="protoQualityLinkRow" style="display: none;">
+                                <span class="proto-link-label">Quality Link:</span>
+                                <input type="text" readonly id="protoQualityLinkInput" class="proto-link-input">
+                                <button class="btn btn-secondary btn-xs" id="copyQualityLinkBtn">📋 Copy</button>
+                            </div>
+                        </div>
+
+                        <!-- Audio Language Selector Card -->
+                        <div class="selector-box-card">
+                            <div class="selector-box-header">
+                                <span class="selector-box-title">🔊 Audio Language (Choose 1)</span>
+                                <span class="proto-badge badge-purple" id="protoAudioBadge">Default Audio</span>
+                            </div>
+                            <div class="selector-list" id="protoAudioList">
+                                <span class="proto-hint">Available audio tracks will appear when stream loads...</span>
+                            </div>
+                            <div class="proto-link-row" id="protoAudioLinkRow" style="display: none;">
+                                <span class="proto-link-label">Audio Link:</span>
+                                <input type="text" readonly id="protoAudioLinkInput" class="proto-link-input">
+                                <button class="btn btn-secondary btn-xs" id="copyAudioLinkBtn">📋 Copy</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 50ms Precision Detector & Audio-Video PTS Synchronization Bar -->
+                    <div class="proto-sync-bar">
+                        <div class="sync-status-group">
+                            <span class="sync-icon">🎯</span>
+                            <span class="sync-label">50ms Detector:</span>
+                            <span class="sync-status in-sync" id="protoSyncStatus">Locked & Synced</span>
+                            <span class="text-xs text-muted" id="protoDriftMs">(0 ms drift)</span>
+                        </div>
+                        <div class="sync-time" id="protoTimeReadout">00:00.000 / 00:00.000</div>
+                    </div>
+                </div>
+
+                <!-- 8. Real-Time Playback Diagnostics Grid -->
+                <div class="diagnostics-panel">
+                    <h4>📊 Playback Diagnostics (10 Indicators)</h4>
+                    <div class="diag-indicators-grid">
+                        <div class="diag-item" id="diagPlaylistDetected">
+                            <span class="diag-dot"></span>
+                            <span class="diag-name">1. Playlist Detected</span>
+                            <span class="diag-val">No</span>
+                        </div>
+                        <div class="diag-item" id="diagPlaylistLoaded">
+                            <span class="diag-dot"></span>
+                            <span class="diag-name">2. Playlist Loaded</span>
+                            <span class="diag-val">No</span>
+                        </div>
+                        <div class="diag-item" id="diagManifestParsed">
+                            <span class="diag-dot"></span>
+                            <span class="diag-name">3. Manifest Parsed</span>
+                            <span class="diag-val">No</span>
+                        </div>
+                        <div class="diag-item" id="diagVideoVariants">
+                            <span class="diag-dot"></span>
+                            <span class="diag-name">4. Video Variants</span>
+                            <span class="diag-val">0</span>
+                        </div>
+                        <div class="diag-item" id="diagAudioTracks">
+                            <span class="diag-dot"></span>
+                            <span class="diag-name">5. Audio Tracks</span>
+                            <span class="diag-val">0</span>
+                        </div>
+                        <div class="diag-item" id="diagVideoFrags">
+                            <span class="diag-dot"></span>
+                            <span class="diag-name">6. Video Fragments</span>
+                            <span class="diag-val">0 loaded</span>
+                        </div>
+                        <div class="diag-item" id="diagAudioFrags">
+                            <span class="diag-dot"></span>
+                            <span class="diag-name">7. Audio Fragments</span>
+                            <span class="diag-val">0 loaded</span>
+                        </div>
+                        <div class="diag-item" id="diagVideoDecoding">
+                            <span class="diag-dot"></span>
+                            <span class="diag-name">8. Video Decoding</span>
+                            <span class="diag-val">Waiting...</span>
+                        </div>
+                        <div class="diag-item" id="diagAudioOutput">
+                            <span class="diag-dot"></span>
+                            <span class="diag-name">9. Audio Playback Active</span>
+                            <span class="diag-val">Inactive</span>
+                        </div>
+                        <div class="diag-item" id="diagOverallStatus">
+                            <span class="diag-dot"></span>
+                            <span class="diag-name">10. Overall Status</span>
+                            <span class="diag-val font-bold">IDLE</span>
+                        </div>
+                    </div>
+
+                    <!-- Live Audio Level Meter (Web Audio API measurement) -->
+                    <div class="audio-meter-box">
+                        <div class="meter-label">
+                            <span>Audio Signal Level (Web Audio API Real-time):</span>
+                            <span id="audioLevelDb" class="font-mono">Mute / No Audio</span>
+                        </div>
+                        <div class="meter-bar-container">
+                            <div class="meter-bar-fill" id="meterFill"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Master Playlist Structure Analyzer Table -->
+            <div class="analyzer-box" id="analyzerBox" style="display: none;">
+                <div class="analyzer-header">
+                    <h4>📑 Master Playlist Structural Breakdown</h4>
+                    <span class="arch-badge" id="archBadge">ANALYZING...</span>
+                </div>
+                <p class="arch-desc" id="archDesc">Inspecting manifest tracks...</p>
+
+                <!-- Video Variants Table -->
+                <div class="manifest-section">
+                    <h5>Video Variants (#EXT-X-STREAM-INF)</h5>
+                    <div class="table-wrapper">
+                        <table class="diag-table" id="variantsTable">
+                            <thead>
+                                <tr>
+                                    <th>Resolution</th>
+                                    <th>Bandwidth</th>
+                                    <th>Avg Bandwidth</th>
+                                    <th>Frame Rate</th>
+                                    <th>Codecs</th>
+                                    <th>Playlist URI</th>
+                                </tr>
+                            </thead>
+                            <tbody id="variantsTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Audio Renditions Table -->
+                <div class="manifest-section">
+                    <h5>Audio Renditions (#EXT-X-MEDIA:TYPE=AUDIO)</h5>
+                    <div class="table-wrapper">
+                        <table class="diag-table" id="audioTable">
+                            <thead>
+                                <tr>
+                                    <th>Group ID</th>
+                                    <th>Track Name</th>
+                                    <th>Language</th>
+                                    <th>Default</th>
+                                    <th>AutoSelect</th>
+                                    <th>Channels</th>
+                                    <th>Audio Playlist URI</th>
+                                </tr>
+                            </thead>
+                            <tbody id="audioTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- HTTP 403 Diagnostics Box -->
+            <div class="error-diag-box" id="http403Box" style="display: none;">
+                <div class="error-diag-header">
+                    <span class="diag-badge-error">HTTP 403 FORBIDDEN DIAGNOSTICS</span>
+                    <span id="diag403Url" class="font-mono text-xs truncate"></span>
+                </div>
+                <div class="diag-reasons-list" id="diag403ReasonsList"></div>
+            </div>
+
+            <!-- 9. "WHY IS THIS STREAM NOT PLAYING?" Troubleshooting Engine -->
+            <div class="troubleshoot-panel">
+                <div class="troubleshoot-header">
+                    <h4>❓ WHY IS THIS STREAM NOT PLAYING? (Technical Diagnostics)</h4>
+                    <span class="text-xs text-muted">Intelligent Failure Analysis & Legitimate Resolutions</span>
+                </div>
+
+                <div class="accordion-list">
+                    <details class="acc-item" id="acc403">
+                        <summary><strong>HTTP 403 Forbidden / Access Denied</strong> <span class="tag tag-warn">Security & Token</span></summary>
+                        <div class="acc-body">
+                            <p><strong>1. What happened?</strong> The CDN / media server rejected the playlist request with HTTP status 403 Forbidden.</p>
+                            <p><strong>2. Likely Technical Reason:</strong> The provider server checks the HTTP <code>Referer</code>, <code>Origin</code>, or validates a time-limited cryptographic signature (e.g. <code>?md5=...&e=...</code>). Direct browser calls from <code>localhost:3000</code> lack the authorized Referer or CORS clearance.</p>
+                            <p><strong>3. Responsible Component:</strong> CDN Security Edge (Cloudflare, Nginx secure_link module, or provider reverse proxy).</p>
+                            <p><strong>4. Missing Information:</strong> Authorized provider Referer header (e.g. <code>https://player.abyssplayer.com/</code>) or non-expired security signature token.</p>
+                            <p><strong>5. Legitimate Resolution:</strong> Turn ON <strong>"Use HLS Proxy"</strong> in the Playback Lab. The proxy server forwards the request with the authentic browser session Referer and persisted cookies.</p>
+                        </div>
+                    </details>
+
+                    <details class="acc-item" id="accMissingAudio">
+                        <summary><strong>Video Plays with NO Voice / Sound (Mute Video)</strong> <span class="tag tag-error">Demuxed Architecture</span></summary>
+                        <div class="acc-body">
+                            <p><strong>1. What happened?</strong> The video stream renders properly, but the audio output is completely silent (0 dB).</p>
+                            <p><strong>2. Likely Technical Reason:</strong> The loaded URL is a <em>variant child playlist</em> (e.g. <code>/hls/eGZu...</code>) rather than the <em>Master Playlist</em>. In demuxed HLS (RFC 8216), video fragments contain <strong>video frames only</strong>. Audio frames are in a separate audio rendition track.</p>
+                            <p><strong>3. Responsible Component:</strong> Client playlist selector (sub-stream vs master manifest mismatch).</p>
+                            <p><strong>4. Missing Information:</strong> The master manifest declaration linking <code>#EXT-X-MEDIA:TYPE=AUDIO</code> with the video variant.</p>
+                            <p><strong>5. Legitimate Resolution:</strong> Always select the <strong>⭐ Master (Video + Audio)</strong> URL. The Hls.js player will load both the video and audio tracks simultaneously, playing them in perfect sync.</p>
+                        </div>
+                    </details>
+
+                    <details class="acc-item" id="accCORS">
+                        <summary><strong>CORS Policy Block / Network Error</strong> <span class="tag tag-warn">Browser Sandbox</span></summary>
+                        <div class="acc-body">
+                            <p><strong>1. What happened?</strong> The browser console shows <code>Access to fetch at ... has been blocked by CORS policy</code>.</p>
+                            <p><strong>2. Likely Technical Reason:</strong> The remote media server does not return <code>Access-Control-Allow-Origin: *</code>. Browser security prevents client-side JavaScript (Hls.js) from inspecting cross-origin media responses.</p>
+                            <p><strong>3. Responsible Component:</strong> Browser Cross-Origin Resource Sharing (CORS) sandbox enforcement.</p>
+                            <p><strong>4. Missing Information:</strong> <code>Access-Control-Allow-Origin</code> header in the server response.</p>
+                            <p><strong>5. Legitimate Resolution:</strong> Use the built-in <strong>/api/proxy-hls</strong> endpoint. The proxy fetches from the server-side where CORS rules do not apply, adding permissive headers for the local player.</p>
+                        </div>
+                    </details>
+
+                    <details class="acc-item" id="accExpired">
+                        <summary><strong>Expired Signed Token / Session Invalidation</strong> <span class="tag tag-info">Token Expiry</span></summary>
+                        <div class="acc-body">
+                            <p><strong>1. What happened?</strong> The stream played initially, but fragments suddenly fail to load with 403 or 410.</p>
+                            <p><strong>2. Likely Technical Reason:</strong> The query parameter timestamp (e.g. <code>e=1732389100</code>) reached its expiration ceiling (typically 1 to 4 hours).</p>
+                            <p><strong>3. Responsible Component:</strong> Content Delivery Network Token Authentication module.</p>
+                            <p><strong>4. Missing Information:</strong> Freshly signed cryptographic timestamp.</p>
+                            <p><strong>5. Legitimate Resolution:</strong> Re-run the fetch operation on the provider page in Chromium to generate a new active session token.</p>
+                        </div>
+                    </details>
+
+                    <details class="acc-item" id="accCodec">
+                        <summary><strong>Codec Incompatibility / Decode Error</strong> <span class="tag tag-info">Browser Codec</span></summary>
+                        <div class="acc-body">
+                            <p><strong>1. What happened?</strong> Fragments load, but the player displays a black screen or triggers <code>MEDIA_ERROR_DECODE</code>.</p>
+                            <p><strong>2. Likely Technical Reason:</strong> The video uses High 10 Profile H.264, HEVC (H.265), or Opus audio inside a container unsupported by the host browser's Media Source Extensions (MSE).</p>
+                            <p><strong>3. Responsible Component:</strong> Host Browser Hardware Decoder & MSE implementation.</p>
+                            <p><strong>4. Missing Information:</strong> Transmuxing support for non-standard container formats.</p>
+                            <p><strong>5. Legitimate Resolution:</strong> Test playback in Chromium or use a player like VLC that bundles standalone software decoders for all profiles.</p>
+                        </div>
+                    </details>
+                </div>
+            </div>
+        </section>
+
+        <!-- Network Inspector & Traffic Log Table -->
+        <main class="grid-layout">
+            <div class="col-traffic card">
+                <div class="card-header">
+                    <h3>🌐 Network Traffic Interceptor</h3>
+                    <div class="filter-pills" id="trafficFilterPills">
+                        <button class="pill active" data-filter="all">All (<span id="countAll">0</span>)</button>
+                        <button class="pill" data-filter="media">Media (<span id="countMedia">0</span>)</button>
+                        <button class="pill" data-filter="blob">Blob (<span id="countBlob">0</span>)</button>
+                        <button class="pill" data-filter="xhr">XHR/API (<span id="countXhr">0</span>)</button>
+                    </div>
+                </div>
+                <div class="table-wrapper">
+                    <table class="traffic-table" id="trafficTable">
+                        <thead>
+                            <tr>
+                                <th>Method</th>
+                                <th>Category</th>
+                                <th>Status</th>
+                                <th>URL</th>
+                            </tr>
+                        </thead>
+                        <tbody id="trafficTableBody">
+                            <tr class="empty-row"><td colspan="4">No requests intercepted yet. Start a fetch above.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Controller Live Logs -->
+            <div class="col-preview card">
+                <div class="card-header">
+                    <h3>🖥️ System Logs & Engine Events</h3>
+                    <button class="btn btn-secondary btn-sm" id="clearLogsBtn">Clear Logs</button>
+                </div>
+                <div class="console-box" id="consoleBox">
+                    <div class="log-line">[SYSTEM] AnimeSalt HLS Lab & Diagnostic Suite initialized.</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Application Controller Logic -->
+    <script src="dualTrackSync.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

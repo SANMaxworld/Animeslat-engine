@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Session storage & cookies
+sessions/
+*.log
+
+# Test artifacts
+test_screenshots/
+
+# OS files
+.DS_Store
+Thumbs.db
